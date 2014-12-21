@@ -1,0 +1,113 @@
+---
+title: "Practical Machine Learning Course Project: Activity Recognition Model"
+author: "Ian Hagerman"
+date: "Sunday, December 21, 2014"
+output:
+  html_document:
+    theme: spacelab
+---
+# Executive Summary
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+### Libraries
+The following libraries were used throughout the code.
+```{r}
+library(caret)
+library(randomForest)
+library(corrplot)
+library(knitr)
+library(kernlab)
+
+```
+```{r setoptions, echo = FALSE}
+opts_chunk$set(cache = FALSE)
+```
+
+### Loading and preprocessing the data
+Training and yesting data was downloaded from the Course website into a data folder in the working directory. 
+
+```{r, eval = FALSE}
+# check if a data folder exists; if not then create one
+if (!file.exists("data")) {dir.create("data")}
+
+# training and testing file URL and destination file
+trainingurl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train_destfile <- "./data/pml-training.csv"
+testingurl <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+test_destfile <- "./data/pml-testing.csv"
+
+# download the files
+download.file(trainingurl, destfile = train_destfile)
+download.file(testingurl, destfile = test_destfile)
+```
+
+The training data was then loaded into R.
+
+```{r}
+# read the csv file for training 
+data_training <- read.csv("./data/pml-training.csv", na.strings= c("NA",""," "))
+```
+
+The data contained many NA values which would limit the model's effectiveness. As a result, NA values were removed from the dataset. In addition, identifier columns were also removed.
+
+```{r}
+# clean the data by removing NAs and identifier columns
+data_training_NAs <- apply(data_training, 2, function(x) {sum(is.na(x))})
+data_training_clean <- data_training[,which(data_training_NAs == 0)]
+data_training_clean <- data_training_clean[8:length(data_training_clean)]
+```
+
+### Creating a model
+The test data set was split up into training and cross-validation sets in a 60:40 ratio to train the model and test it against data it was not fitted to.
+
+```{r}
+# split the cleaned testing data into training and cross-validation datasets
+inTraining <- createDataPartition(y = data_training_clean$classe, p = 0.6, list = FALSE)
+training <- data_training_clean[inTraining, ]
+crossval <- data_training_clean[-inTraining, ]
+```
+
+Due to it's ability to balance errors in unbalanced datasets, a random forest model was used to predict classifications. To evaluated the forest errors rate, a correlation plot was created to evaluate inter-variable relationships. The dark red and blue colors indicate a highly negative and positive correlation, respectively As shown, there are not many highly correlation pairs.
+
+```{r, fig.height = 10, fig.width = 10}
+# plot a correlation matrix
+correllation_Matrix <- cor(training[, -length(training)])
+corrplot(correllation_Matrix, order = "FPC", method = "square", type = "lower", tl.cex = 0.9,  tl.col = rgb(0, 0, 0))
+```
+
+The random forest model was then fitted to predit the class.
+
+```{r}
+# fit a model to predict the class using everything else as a predictor
+model <- randomForest(classe ~ ., data = training)
+model
+```
+
+### Cross-validation
+The model was then used to classify the remaining 40% of data. The results were placed in a confusion matrix along with the actual classifications in order to determine the accuracy of the model.
+
+```{r}
+# cross-validation of the model using the remaining 40% of data
+predictCrossVal <- predict(model, crossval)
+confusionMatrix(crossval$classe, predictCrossVal)
+```
+
+The model yielded a 99.2% prediction accuracy. 
+
+### Predictions
+A separate data set was then loaded into R and similarly cleaned. The model was then used to predict the classifications of the 20 results of this new data.
+
+```{r}
+# apply the same treatment to the final testing data
+data_test <- read.csv("./data/pml-testing.csv", na.strings= c("NA",""," "))
+data_test_NAs <- apply(data_test, 2, function(x) {sum(is.na(x))})
+data_test_clean <- data_test[,which(data_test_NAs == 0)]
+data_test_clean <- data_test_clean[8:length(data_test_clean)]
+
+# predict the classes of the test set
+predictTest <- predict(model, data_test_clean)
+predictTest
+```
+
+### Conclusions
+After submitting these answers, the algorithm correctly predicted the outcome for 20/20 observations further confirming its strong out-of-sample classification accuracy.
